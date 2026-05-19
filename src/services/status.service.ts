@@ -1,6 +1,15 @@
-import Status from "../models/Status";
+import Status from "../models/Status.js";
 import StatusVisibility from "../models/StatusVisibility.js";
 import Friend from "../models/Friend.js";
+import {
+    deleteCacheByPattern,
+    deleteCacheKeys,
+    getCachedJson,
+    setCachedJson,
+} from "../config/redis.js";
+
+const myStatusesCacheKey = (userId: string) => `statuses:user:${userId}:mine`;
+const feedCacheKey = (viewerId: string) => `statuses:feed:${viewerId}`;
 
 // ── Create ────────────────────────────────────────────────────────────────────
 
@@ -31,22 +40,38 @@ export const createStatus = async (
         }
     }
 
+    await deleteCacheKeys(myStatusesCacheKey(userId));
+    await deleteCacheByPattern("statuses:feed:*");
     return status;
 };
 
 // ── Read ──────────────────────────────────────────────────────────────────────
 
 export const getMyStatuses = async (userId: string) => {
-    return Status.find({ userId }).sort({ createdAt: -1 });
+    const cacheKey = myStatusesCacheKey(userId);
+    const cached = await getCachedJson(cacheKey);
+    if (cached) return cached;
+
+    const statuses = await Status.find({ userId }).sort({ createdAt: -1 }).lean();
+    await setCachedJson(cacheKey, statuses, 60);
+    return statuses;
 };
 
 export const getVisibleStatuses = async (viewerId: string) => {
+    const cacheKey = feedCacheKey(viewerId);
+    const cached = await getCachedJson(cacheKey);
+    if (cached) return cached;
+
     const visibilities = await StatusVisibility.find({ allowedUserId: viewerId }).select("statusId");
     const statusIds = visibilities.map((v) => v.statusId);
 
-    return Status.find({ _id: { $in: statusIds } })
+    const statuses = await Status.find({ _id: { $in: statusIds } })
         .populate("userId", "name number profile")
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .lean();
+
+    await setCachedJson(cacheKey, statuses, 30);
+    return statuses;
 };
 
 // ── Visibility ────────────────────────────────────────────────────────────────
@@ -66,6 +91,8 @@ export const updateStatusVisibility = async (
         await StatusVisibility.insertMany(docs, { ordered: false });
     }
 
+    await deleteCacheKeys(myStatusesCacheKey(ownerId));
+    await deleteCacheByPattern("statuses:feed:*");
     return { message: "Visibility updated" };
 };
 
@@ -75,5 +102,7 @@ export const deleteStatus = async (statusId: string, userId: string) => {
     const status = await Status.findOneAndDelete({ _id: statusId, userId });
     if (!status) throw new Error("Status not found or not yours");
     await StatusVisibility.deleteMany({ statusId });
+    await deleteCacheKeys(myStatusesCacheKey(userId));
+    await deleteCacheByPattern("statuses:feed:*");
     return { message: "Status deleted" };
 };
