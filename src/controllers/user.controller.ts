@@ -1,15 +1,15 @@
-import { Request, Response } from "express";
-import { AuthRequest } from "../middleware/auth.middleware";
-import * as userService from "../services/user.service";
+import { Response } from "express";
+import { AuthRequest } from "../middleware/auth.middleware.js";
+import * as userService from "../services/user.service.js";
 
-// Merge AuthRequest with typed route params
-interface ContactReq extends AuthRequest { params: { contactId: string } }
-interface TargetReq extends AuthRequest { params: { targetId: string } }
+interface TargetReq extends AuthRequest { params: { friendId: string } }
+interface BlockReq extends AuthRequest { params: { targetId: string } }
+
+// ── Profile ───────────────────────────────────────────────────────────────────
 
 export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const user = await userService.getProfile(req.userId!);
-        res.json(user);
+        res.json(await userService.getProfile(req.userId!));
     } catch (err: any) {
         res.status(404).json({ message: err.message });
     }
@@ -17,64 +17,78 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
 
 export const updateMe = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const user = await userService.updateProfile(req.userId!, req.body);
-        res.json(user);
+        res.json(await userService.updateProfile(req.userId!, req.body));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
 
-export const getContacts = async (req: AuthRequest, res: Response): Promise<void> => {
+// ── Phone Contact Sync ────────────────────────────────────────────────────────
+
+export const syncContacts = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const contacts = await userService.getContacts(req.userId!);
-        res.json(contacts);
+        const { numbers } = req.body;
+        if (!Array.isArray(numbers)) {
+            res.status(400).json({ message: "numbers must be an array" });
+            return;
+        }
+        res.json(await userService.syncPhoneContacts(req.userId!, numbers));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
 
-export const addContact = async (req: ContactReq, res: Response): Promise<void> => {
+// ── Friends ───────────────────────────────────────────────────────────────────
+
+export const getMyFriends = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const result = await userService.addContact(req.userId!, req.params.contactId);
-        res.json(result);
+        res.json(await userService.getMyFriends(req.userId!));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
 
-export const removeContact = async (req: ContactReq, res: Response): Promise<void> => {
+export const updateFriendMeta = async (req: TargetReq, res: Response): Promise<void> => {
     try {
-        const result = await userService.removeContact(req.userId!, req.params.contactId);
-        res.json(result);
+        res.json(await userService.updateFriendMeta(req.userId!, req.params.friendId, req.body));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
 
-export const blockUser = async (req: TargetReq, res: Response): Promise<void> => {
+export const removeFriend = async (req: TargetReq, res: Response): Promise<void> => {
     try {
-        const result = await userService.blockUser(req.userId!, req.params.targetId);
-        res.json(result);
+        res.json(await userService.removeFriend(req.userId!, req.params.friendId));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
 
-export const unblockUser = async (req: TargetReq, res: Response): Promise<void> => {
+// ── Block / Unblock ───────────────────────────────────────────────────────────
+
+export const blockUser = async (req: BlockReq, res: Response): Promise<void> => {
     try {
-        const result = await userService.unblockUser(req.userId!, req.params.targetId);
-        res.json(result);
+        res.json(await userService.blockUser(req.userId!, req.params.targetId));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }
 };
+
+export const unblockUser = async (req: BlockReq, res: Response): Promise<void> => {
+    try {
+        res.json(await userService.unblockUser(req.userId!, req.params.targetId));
+    } catch (err: any) {
+        res.status(400).json({ message: err.message });
+    }
+};
+
+// ── Search ────────────────────────────────────────────────────────────────────
 
 export const searchUsers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const q = String(req.query.q || "").trim();
         if (!q) { res.json([]); return; }
-        const users = await userService.searchUsers(q, req.userId!);
-        res.json(users);
+        res.json(await userService.searchUsers(q, req.userId!));
     } catch (err: any) {
         res.status(400).json({ message: err.message });
     }

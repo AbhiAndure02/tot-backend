@@ -1,6 +1,6 @@
 import { Response } from "express";
-import { AuthRequest } from "../middleware/auth.middleware";
-import * as statusService from "../services/status.service";
+import { AuthRequest } from "../middleware/auth.middleware.js";
+import * as statusService from "../services/status.service.js";
 
 interface StatusReq extends AuthRequest { params: { statusId: string } }
 
